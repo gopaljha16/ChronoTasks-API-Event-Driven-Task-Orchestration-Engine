@@ -3,14 +3,30 @@ from django.dispatch import receiver
 from tasks.models import Task
 from .models import Event
 
+# Store old task state before save
+_task_old_state = {}
+
+
+@receiver(pre_save, sender=Task)
+def store_old_task_state(sender, instance, **kwargs):
+    """Store old task state before save"""
+    if instance.pk:
+        try:
+            old_task = Task.objects.get(pk=instance.pk)
+            _task_old_state[instance.pk] = {
+                'status': old_task.status,
+            }
+        except Task.DoesNotExist:
+            pass
+
 
 @receiver(post_save, sender=Task)
 def create_task_event(sender, instance, created, **kwargs):
     """
-    Create an event when a task is created or updated
+    Create event when task is created or updated
     """
     if created:
-        # Task was created
+        # Task was just created
         Event.objects.create(
             event_type='TASK_CREATED',
             user=instance.created_by,
@@ -25,20 +41,21 @@ def create_task_event(sender, instance, created, **kwargs):
         )
     else:
         # Task was updated
-        # Check if task was completed
-        if instance.status == 'completed' and hasattr(instance, '_previous_status'):
-            if instance._previous_status != 'completed':
-                Event.objects.create(
-                    event_type='TASK_COMPLETED',
-                    user=instance.created_by,
-                    task=instance,
-                    metadata={
-                        'task_id': instance.id,
-                        'title': instance.title,
-                        'previous_status': instance._previous_status,
-                        'new_status': instance.status,
-                    }
-                )
+        # Check if status changed to completed
+        old_state = _task_old_state.get(instance.pk, {})
+        old_status = old_state.get('status')
+        
+        if old_status and old_status != 'completed' and instance.status == 'completed':
+            Event.objects.create(
+                event_type='TASK_COMPLETED',
+                user=instance.created_by,
+                task=instance,
+                metadata={
+                    'task_id': instance.id,
+                    'title': instance.title,
+                    'completed_at': str(instance.updated_at),
+                }
+            )
         else:
             # Regular update
             Event.objects.create(
@@ -50,28 +67,19 @@ def create_task_event(sender, instance, created, **kwargs):
                     'title': instance.title,
                     'status': instance.status,
                     'priority': instance.priority,
-                    'assigned_to': instance.assigned_to.email if instance.assigned_to else None,
+                    'changes': 'Task updated',
                 }
             )
-
-
-@receiver(pre_save, sender=Task)
-def store_previous_status(sender, instance, **kwargs):
-    """
-    Store the previous status before saving to detect completion
-    """
-    if instance.pk:
-        try:
-            previous = Task.objects.get(pk=instance.pk)
-            instance._previous_status = previous.status
-        except Task.DoesNotExist:
-            instance._previous_status = None
+        
+        # Clean up old state
+        if instance.pk in _task_old_state:
+            del _task_old_state[instance.pk]
 
 
 @receiver(post_delete, sender=Task)
-def create_task_deleted_event(sender, instance, **kwargs):
+def delete_task_event(sender, instance, **kwargs):
     """
-    Create an event when a task is deleted
+    Create event when task is deleted
     """
     Event.objects.create(
         event_type='TASK_DELETED',
@@ -82,5 +90,6 @@ def create_task_deleted_event(sender, instance, **kwargs):
             'title': instance.title,
             'status': instance.status,
             'priority': instance.priority,
+            'deleted_at': str(instance.updated_at),
         }
     )
