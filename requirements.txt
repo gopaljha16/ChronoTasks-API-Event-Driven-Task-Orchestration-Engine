@@ -1,0 +1,28 @@
+# Core Django
+Django==4.2.7
+djangorestframework==3.14.0
+
+# Database
+psycopg2-binary==2.9.9
+
+# Authentication
+djangorestframework-simplejwt==5.3.0
+
+# Caching and Task Queue
+redis==5.0.1
+celery==5.3.4
+
+# Environment Variables
+python-decouple==3.8
+
+# CORS (if needed for frontend)
+django-cors-headers==4.3.1
+
+# API Documentation
+drf-yasg==1.21.7
+
+# Filtering and Search
+django-filter==23.5
+
+# Development
+django-extensions==3.2.3
