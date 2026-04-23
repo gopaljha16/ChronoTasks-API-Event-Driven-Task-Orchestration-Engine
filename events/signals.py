@@ -2,6 +2,9 @@ from django.db.models.signals import post_save, post_delete, pre_save
 from django.dispatch import receiver
 from tasks.models import Task
 from .models import Event
+import logging
+
+logger = logging.getLogger('events')
 
 # Store old task state before save
 _task_old_state = {}
@@ -27,7 +30,7 @@ def create_task_event(sender, instance, created, **kwargs):
     """
     if created:
         # Task was just created
-        Event.objects.create(
+        event = Event.objects.create(
             event_type='TASK_CREATED',
             user=instance.created_by,
             task=instance,
@@ -39,6 +42,13 @@ def create_task_event(sender, instance, created, **kwargs):
                 'assigned_to': instance.assigned_to.email if instance.assigned_to else None,
             }
         )
+        # Trigger async processing
+        try:
+            from .tasks import process_event
+            process_event.delay(event.id)
+            logger.info(f"Queued async processing for event {event.id}")
+        except Exception as e:
+            logger.error(f"Failed to queue event processing: {str(e)}")
     else:
         # Task was updated
         # Check if status changed to completed
@@ -46,7 +56,7 @@ def create_task_event(sender, instance, created, **kwargs):
         old_status = old_state.get('status')
         
         if old_status and old_status != 'completed' and instance.status == 'completed':
-            Event.objects.create(
+            event = Event.objects.create(
                 event_type='TASK_COMPLETED',
                 user=instance.created_by,
                 task=instance,
@@ -58,7 +68,7 @@ def create_task_event(sender, instance, created, **kwargs):
             )
         else:
             # Regular update
-            Event.objects.create(
+            event = Event.objects.create(
                 event_type='TASK_UPDATED',
                 user=instance.created_by,
                 task=instance,
@@ -71,6 +81,14 @@ def create_task_event(sender, instance, created, **kwargs):
                 }
             )
         
+        # Trigger async processing
+        try:
+            from .tasks import process_event
+            process_event.delay(event.id)
+            logger.info(f"Queued async processing for event {event.id}")
+        except Exception as e:
+            logger.error(f"Failed to queue event processing: {str(e)}")
+        
         # Clean up old state
         if instance.pk in _task_old_state:
             del _task_old_state[instance.pk]
@@ -81,7 +99,7 @@ def delete_task_event(sender, instance, **kwargs):
     """
     Create event when task is deleted
     """
-    Event.objects.create(
+    event = Event.objects.create(
         event_type='TASK_DELETED',
         user=instance.created_by,
         task=None,  # Task is deleted, so we can't reference it
@@ -93,3 +111,11 @@ def delete_task_event(sender, instance, **kwargs):
             'deleted_at': str(instance.updated_at),
         }
     )
+    
+    # Trigger async processing
+    try:
+        from .tasks import process_event
+        process_event.delay(event.id)
+        logger.info(f"Queued async processing for event {event.id}")
+    except Exception as e:
+        logger.error(f"Failed to queue event processing: {str(e)}")
