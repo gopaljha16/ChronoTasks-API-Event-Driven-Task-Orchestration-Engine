@@ -61,6 +61,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.QueryCountDebugMiddleware',
+    'core.middleware.CacheHeaderMiddleware',
 ]
 
 ROOT_URLCONF = 'chronotasks.urls'
@@ -160,6 +162,15 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '1000/hour',
+        'burst': '60/minute',
+    },
 }
 
 # JWT Configuration
@@ -190,6 +201,27 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+
+# Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'chronotasks',
+        'TIMEOUT': 300,  # 5 minutes default
+    }
+}
+
+# Cache time settings
+CACHE_TTL = {
+    'task_list': 60 * 5,  # 5 minutes
+    'task_detail': 60 * 10,  # 10 minutes
+    'user_tasks': 60 * 3,  # 3 minutes
+    'event_list': 60 * 2,  # 2 minutes
+}
 
 # Logging Configuration
 LOGGING = {
@@ -224,6 +256,10 @@ LOGGING = {
         'tasks': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
+        },
+        'performance': {
+            'handlers': ['console', 'file'],
+            'level': 'WARNING',
         },
     },
 }
