@@ -1,3 +1,22 @@
-from django.shortcuts import render
+from rest_framework import viewsets, filters
+from rest_framework.permissions import IsAuthenticated
+from django_filters.rest_framework import DjangoFilterBackend
+from accounts.permissions import IsAdminUser
+from .models import Event
+from .serializers import EventSerializer
+from .filters import EventFilter
 
-# Create your views here.
+
+class EventViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only viewset for events.
+    Only admins can view events.
+    """
+    queryset = Event.objects.all().select_related('user', 'task')
+    serializer_class = EventSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = EventFilter
+    search_fields = ['event_type', 'user__email', 'task__title']
+    ordering_fields = ['timestamp', 'event_type']
+    ordering = ['-timestamp']
