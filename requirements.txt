@@ -3,7 +3,8 @@ Django==4.2.7
 djangorestframework==3.14.0
 
 # Database
-psycopg2-binary==2.9.9
+# psycopg2-binary==2.9.9  # Not compatible with Python 3.14 yet
+psycopg[binary]>=3.1.0  # Modern PostgreSQL adapter compatible with Python 3.14
 
 # Authentication
 djangorestframework-simplejwt==5.3.0
